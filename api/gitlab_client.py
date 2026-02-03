@@ -1,0 +1,130 @@
+import logging
+from typing import Dict, Any, Optional
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+logger = logging.getLogger(__name__)
+
+
+class GitLabClient:
+    def __init__(self, base_url: str, token: str, timeout: int = 30):
+        self.base_url = base_url.rstrip('/')
+        self.token = token
+        self.timeout = timeout
+        
+        # 세션 생성 및 재시도 전략 설정
+        self.session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504]
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+        
+        # 기본 헤더 설정
+        self.session.headers.update({
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        })
+    
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """HTTP 요청 헬퍼 메서드"""
+        url = f"{self.base_url}/api/v4{endpoint}"
+        
+        try:
+            response = self.session.request(
+                method=method,
+                url=url,
+                params=params,
+                json=json_data,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json() if response.content else {}
+        except requests.exceptions.RequestException as e:
+            logger.error(f"GitLab API request failed: {method} {url}, error: {e}")
+            raise
+    
+    def fork_project(
+        self,
+        project_id: int,
+        namespace: Optional[str] = None,
+        name: Optional[str] = None,
+        path: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        프로젝트를 fork하여 새 프로젝트 생성
+        
+        Args:
+            project_id: Fork할 원본 프로젝트 ID
+            namespace: Fork된 프로젝트가 생성될 namespace (선택)
+            name: Fork된 프로젝트의 이름 (선택)
+            path: Fork된 프로젝트의 path (선택)
+        
+        Returns:
+            생성된 프로젝트 정보
+        """
+        json_data = {}
+        if namespace:
+            json_data["namespace"] = namespace
+        if name:
+            json_data["name"] = name
+        if path:
+            json_data["path"] = path
+        
+        logger.info(f"Forking project {project_id} with params: {json_data}")
+        result = self._request("POST", f"/projects/{project_id}/fork", json_data=json_data)
+        logger.info(f"Project forked successfully: {result.get('id')}")
+        return result
+    
+    def add_project_member(
+        self,
+        project_id: int,
+        user_id: int,
+        access_level: int = 30
+    ) -> Dict[str, Any]:
+        """
+        프로젝트에 사용자 추가
+        
+        Args:
+            project_id: 프로젝트 ID
+            user_id: 추가할 사용자 ID
+            access_level: 접근 레벨 (10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner)
+        
+        Returns:
+            추가된 멤버 정보
+        """
+        json_data = {
+            "user_id": user_id,
+            "access_level": access_level
+        }
+        
+        logger.info(
+            f"Adding user {user_id} to project {project_id} "
+            f"with access level {access_level}"
+        )
+        result = self._request(
+            "POST",
+            f"/projects/{project_id}/members",
+            json_data=json_data
+        )
+        logger.info(f"User added to project successfully: {result.get('id')}")
+        return result
+    
+    def get_project(self, project_id: int) -> Dict[str, Any]:
+        """프로젝트 정보 조회"""
+        return self._request("GET", f"/projects/{project_id}")
+    
+    def get_user(self, user_id: int) -> Dict[str, Any]:
+        """사용자 정보 조회"""
+        return self._request("GET", f"/users/{user_id}")
