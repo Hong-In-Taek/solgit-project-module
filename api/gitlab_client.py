@@ -84,7 +84,24 @@ class GitLabClient:
         
         logger.info(f"Forking project {project_id} with params: {json_data}")
         result = self._request("POST", f"/projects/{project_id}/fork", json_data=json_data)
-        logger.info(f"Project forked successfully: {result.get('id')}")
+        forked_project_id = result.get('id')
+        logger.info(f"Project forked successfully: {forked_project_id}")
+        
+        # 1. Fork relationship 삭제
+        try:
+            self.delete_fork_relationship(forked_project_id)
+            logger.info(f"Fork relationship deleted for project {forked_project_id}")
+        except Exception as e:
+            logger.warning(f"Failed to delete fork relationship for project {forked_project_id}: {e}")
+        
+        # 2. test, main 브랜치를 maintainer 권한으로 protected branch 설정
+        for branch_name in ['test', 'main']:
+            try:
+                self.protect_branch(forked_project_id, branch_name)
+                logger.info(f"Branch {branch_name} protected for project {forked_project_id}")
+            except Exception as e:
+                logger.warning(f"Failed to protect branch {branch_name} for project {forked_project_id}: {e}")
+        
         return result
     
     def add_project_member(
@@ -128,3 +145,51 @@ class GitLabClient:
     def get_user(self, user_id: int) -> Dict[str, Any]:
         """사용자 정보 조회"""
         return self._request("GET", f"/users/{user_id}")
+    
+    def delete_fork_relationship(self, project_id: int) -> None:
+        """
+        프로젝트의 fork relationship 삭제
+        
+        Args:
+            project_id: Fork relationship을 삭제할 프로젝트 ID
+        """
+        logger.info(f"Deleting fork relationship for project {project_id}")
+        self._request("DELETE", f"/projects/{project_id}/fork")
+        logger.info(f"Fork relationship deleted successfully for project {project_id}")
+    
+    def protect_branch(
+        self,
+        project_id: int,
+        branch_name: str,
+        push_access_level: int = 40,
+        merge_access_level: int = 40
+    ) -> Dict[str, Any]:
+        """
+        브랜치를 protected branch로 설정
+        
+        Args:
+            project_id: 프로젝트 ID
+            branch_name: 보호할 브랜치 이름 (test, main 등)
+            push_access_level: Push 권한 레벨 (40=Maintainer)
+            merge_access_level: Merge 권한 레벨 (40=Maintainer)
+        
+        Returns:
+            Protected branch 설정 정보
+        """
+        json_data = {
+            "name": branch_name,
+            "push_access_levels": [{"access_level": push_access_level}],
+            "merge_access_levels": [{"access_level": merge_access_level}]
+        }
+        
+        logger.info(
+            f"Protecting branch {branch_name} for project {project_id} "
+            f"with push_access_level={push_access_level}, merge_access_level={merge_access_level}"
+        )
+        result = self._request(
+            "POST",
+            f"/projects/{project_id}/protected_branches",
+            json_data=json_data
+        )
+        logger.info(f"Branch {branch_name} protected successfully for project {project_id}")
+        return result

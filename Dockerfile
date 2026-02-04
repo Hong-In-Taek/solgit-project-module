@@ -21,12 +21,6 @@ FROM python:3.11-slim
 # 보안을 위한 non-root 사용자 생성
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# 필요한 패키지 설치
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # 빌드 스테이지에서 Python 패키지 복사

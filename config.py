@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -98,6 +99,27 @@ class Config:
                 "token": gitlab_test_token,
                 "timeout": self.gitlab_timeout
             }
+        
+        # Jenkins API 설정
+        self.jenkins_timeout = int(os.getenv("JENKINS_TIMEOUT", "30"))
+        jenkins_url = os.getenv("JENKINS_URL")
+        jenkins_username = os.getenv("JENKINS_USERNAME")
+        jenkins_password = os.getenv("JENKINS_PASSWORD")  # API token 또는 password
+        
+        if jenkins_url and jenkins_username and jenkins_password:
+            self.jenkins_config = {
+                "url": jenkins_url,
+                "username": jenkins_username,
+                "password": jenkins_password,
+                "timeout": self.jenkins_timeout
+            }
+        else:
+            self.jenkins_config = None
+            if jenkins_url or jenkins_username or jenkins_password:
+                logger.warning(
+                    "Jenkins configuration incomplete. "
+                    "Please set JENKINS_URL, JENKINS_USERNAME, and JENKINS_PASSWORD"
+                )
     
     def get_gitlab_config(self, git_type: str) -> dict:
         """
@@ -110,6 +132,15 @@ class Config:
             GitLab 설정 딕셔너리 (url, token, timeout) 또는 None
         """
         return self.gitlab_configs.get(git_type)
+    
+    def get_jenkins_config(self) -> Optional[dict]:
+        """
+        Jenkins 설정 반환
+        
+        Returns:
+            Jenkins 설정 딕셔너리 (url, username, password, timeout) 또는 None
+        """
+        return self.jenkins_config
 
 
 def get_config() -> Config:

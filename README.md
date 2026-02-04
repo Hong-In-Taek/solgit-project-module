@@ -1,6 +1,6 @@
 # solgit-project-module
 
-GitLab 관련 서비스를 제공하는 Python 모듈입니다. RabbitMQ를 통해 메시지를 구독하고, 메시지 타입에 따라 GitLab API를 호출합니다.
+GitLab 및 Jenkins 관련 서비스를 제공하는 Python 모듈입니다. RabbitMQ를 통해 메시지를 구독하고, 메시지 타입에 따라 GitLab API 또는 Jenkins API를 호출합니다.
 
 ## 기능
 
@@ -8,13 +8,16 @@ GitLab 관련 서비스를 제공하는 Python 모듈입니다. RabbitMQ를 통�
 - 메시지 타입별 GitLab API 호출
   - `GL_PROJECT_FORK`: 프로젝트 fork하여 새 프로젝트 생성
   - `GL_PROJECT_ADD_MEMBER`: 프로젝트에 사용자 추가
+- 메시지 타입별 Jenkins API 호출
+  - `JENKINS_PROJECT_COPY`: 다른 폴더의 프로젝트를 복사하여 새 프로젝트 생성
 
 ## 구조
 
 ```
 solgit-project-module/
 ├── api/
-│   └── gitlab_client.py      # GitLab API 클라이언트
+│   ├── gitlab_client.py      # GitLab API 클라이언트
+│   └── jenkins_client.py      # Jenkins API 클라이언트
 ├── mq/
 │   └── subscriber.py          # RabbitMQ Subscriber
 ├── service/
@@ -84,6 +87,10 @@ docker run -d \
   -e GITLAB_GITLABTEST_URL=https://gitlab-test.example.com \
   -e GITLAB_GITLABTEST_TOKEN=your_gitlab_test_token \
   -e GITLAB_TIMEOUT=30 \
+  -e JENKINS_URL=http://jenkins.example.com:8080 \
+  -e JENKINS_USERNAME=admin \
+  -e JENKINS_PASSWORD=your_jenkins_api_token \
+  -e JENKINS_TIMEOUT=30 \
   --restart unless-stopped \
   solgit-project-module
 ```
@@ -109,6 +116,10 @@ docker run -d \
   -e GITLAB_TEST_URL=https://gitlab-test.example.com \
   -e GITLAB_TEST_TOKEN=your_gitlab_test_token \
   -e GITLAB_TIMEOUT=30 \
+  -e JENKINS_URL=http://jenkins.example.com:8080 \
+  -e JENKINS_USERNAME=admin \
+  -e JENKINS_PASSWORD=your_jenkins_api_token \
+  -e JENKINS_TIMEOUT=30 \
   --restart unless-stopped \
   solgit-project-module
 ```
@@ -178,6 +189,22 @@ GITLAB_GITLABTEST_TOKEN=your_token_here
 **참고**: 
 - 각 GitLab 인스턴스는 URL과 TOKEN이 모두 설정되어야 사용 가능합니다.
 - `GITLAB_INSTANCES`를 설정하면 해당 방식이 우선 적용되며, 기존 방식은 하위 호환성을 위해 유지됩니다.
+
+### Jenkins API 설정
+Jenkins는 단일 인스턴스만 지원합니다.
+
+- `JENKINS_URL`: Jenkins 서버 URL (예: `http://jenkins.example.com:8080`)
+- `JENKINS_USERNAME`: Jenkins 사용자명
+- `JENKINS_PASSWORD`: Jenkins API Token 또는 비밀번호
+- `JENKINS_TIMEOUT`: API 요청 타임아웃 (초, 기본값: `30`)
+
+**예시:**
+```bash
+JENKINS_URL=http://jenkins.example.com:8080
+JENKINS_USERNAME=admin
+JENKINS_PASSWORD=your_api_token_here
+JENKINS_TIMEOUT=30
+```
 
 ## 메시지 포맷
 
@@ -254,6 +281,66 @@ GITLAB_GITLABTEST_TOKEN=your_token_here
   - `40`: Maintainer
   - `50`: Owner
 
+**참고:**
+- `user_id`는 단일 값 또는 리스트 형태로 전달 가능합니다.
+- 리스트인 경우 각 사용자에 대해 멤버 추가를 수행합니다.
+
+**예시 (리스트):**
+```json
+{
+  "gitType": "GitlabOnprem",
+  "project_id": 123,
+  "user_id": [456, 789, 101],
+  "access_level": 30
+}
+```
+
+### JENKINS_PROJECT_COPY
+
+다른 폴더의 Jenkins 프로젝트를 복사하여 새 프로젝트를 생성합니다.
+
+**Payload:**
+```json
+{
+  "source_job_name": "/a/b/template",
+  "target_folder_path": "/new/era/",
+  "new_job_name": "new-era-project"
+}
+```
+
+**필수 필드:**
+- `source_job_name`: 복사할 원본 프로젝트 경로 (예: `/a/b/template` 또는 `a/b/template`)
+- `target_folder_path`: 생성할 폴더 경로 (예: `/new/era/` 또는 `new/era/`)
+- `new_job_name`: 생성할 새 프로젝트 이름 (예: `new-era-project`)
+
+**동작 방식:**
+- 원본 프로젝트: `/a/b/template`
+- 대상 폴더: `/new/era/`
+- 새 Job 이름: `new-era-project`
+- 최종 경로: `/new/era/new-era-project`
+- API 호출: `POST /job/new/job/era/createItem?name=new-era-project&mode=copy&from=a/b/template`
+
+**예시:**
+```json
+{
+  "header": {
+    "messageId": "uuid",
+    "messageType": "JENKINS_PROJECT_COPY",
+    "version": "v1",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "correlationId": "optional-correlation-id",
+    "source": "source-service"
+  },
+  "body": {
+    "payload": {
+      "source_job_name": "/a/b/template",
+      "target_folder_path": "/new/era/",
+      "new_job_name": "new-era-project"
+    }
+  }
+}
+```
+
 ## 개발
 
 ### 새로운 메시지 타입 추가
@@ -263,6 +350,7 @@ GITLAB_GITLABTEST_TOKEN=your_token_here
 handler_map = {
     "GL_PROJECT_FORK": self._handle_project_fork,
     "GL_PROJECT_ADD_MEMBER": self._handle_project_add_member,
+    "JENKINS_PROJECT_COPY": self._handle_jenkins_project_copy,
     "NEW_MESSAGE_TYPE": self._handle_new_message_type,  # 추가
 }
 ```
@@ -274,7 +362,7 @@ def _handle_new_message_type(self, context: Dict[str, Any], message: Message):
     pass
 ```
 
-3. 필요시 `api/gitlab_client.py`에 새로운 GitLab API 메서드 추가
+3. 필요시 `api/gitlab_client.py` 또는 `api/jenkins_client.py`에 새로운 API 메서드 추가
 
 ## 라이선스
 
