@@ -1,6 +1,5 @@
 import logging
 from typing import Dict, Any, Optional
-from base64 import b64encode
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -27,13 +26,8 @@ class JenkinsClient:
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
         
-        # 기본 인증 헤더 설정
-        credentials = f"{username}:{password}"
-        encoded_credentials = b64encode(credentials.encode()).decode()
-        self.session.headers.update({
-            "Authorization": f"Basic {encoded_credentials}",
-            "Content-Type": "application/json"
-        })
+        # Basic 인증 설정 (requests가 자동으로 헤더 생성)
+        self.session.auth = (username, password)
     
     def _request(
         self,
