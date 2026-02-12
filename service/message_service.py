@@ -142,7 +142,7 @@ class MessageService:
             return
         
         # 필수 필드 확인
-        project_id = payload.get("project_id")
+        project_id = payload.get("projectId")
         if not project_id:
             logger.warning(
                 f"Missing project_id in payload - "
@@ -159,13 +159,13 @@ class MessageService:
             return
         
         # 선택적 필드
-        namespace = payload.get("namespace")
+        namespace_id = payload.get("namespaceId")
         path = payload.get("path")
         
         # GitLab API 호출
         result = gitlab_client.fork_project(
             project_id=int(project_id),
-            namespace=namespace,
+            namespace_id=namespace_id,
             name=name,
             path=path
         )
@@ -223,8 +223,8 @@ class MessageService:
             return
         
         # 필수 필드 확인
-        project_id = payload.get("project_id")
-        user_id = payload.get("user_id")
+        project_id = payload.get("projectId")
+        user_id = payload.get("userId")
         
         if not project_id or not user_id:
             logger.warning(
@@ -347,9 +347,9 @@ class MessageService:
             return
         
         # 필수 필드 확인
-        source_job_name = payload.get("source_job_name")
-        target_folder_path = payload.get("target_folder_path")
-        new_job_name = payload.get("new_job_name")
+        source_job_name = payload.get("sourceJobName")
+        target_folder_path = payload.get("targetFolderPath")
+        new_job_name = payload.get("newJobName")
         
         if not source_job_name or not target_folder_path or not new_job_name:
             logger.warning(
@@ -477,16 +477,16 @@ class MessageService:
                 logger.warning(f"Failed to parse updated_at: {updated_at}, error: {e}")
         
         # 원본 payload에서 추가 정보 가져오기 (있는 경우)
-        create_user_id = original_payload.get("create_user_id")
-        update_user_id = original_payload.get("update_user_id")
-        env_grp_nm = original_payload.get("env_grp_nm")
+        create_user_id = original_payload.get("createUserId")
+        update_user_id = original_payload.get("updateUserId")
+        env_grp_nm = original_payload.get("gitType")
         
         # payload 구성
         payload = {
-            "project_id": project_id,
-            "project_nm": project_nm,
-            "group_id": group_id,
-            "group_nm": group_nm,
+            "projectId": project_id,
+            "projectNm": project_nm,
+            "groupId": group_id,
+            "groupNm": group_nm,
         }
         
         # 선택적 필드 추가

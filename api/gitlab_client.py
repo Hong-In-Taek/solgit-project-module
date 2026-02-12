@@ -58,7 +58,7 @@ class GitLabClient:
     def fork_project(
         self,
         project_id: int,
-        namespace: Optional[str] = None,
+        namespace_id: Optional[int] = None,
         name: Optional[str] = None,
         path: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -67,7 +67,7 @@ class GitLabClient:
         
         Args:
             project_id: Fork할 원본 프로젝트 ID
-            namespace: Fork된 프로젝트가 생성될 namespace (선택)
+            namespace_id: Fork된 프로젝트가 생성될 namespace ID 
             name: Fork된 프로젝트의 이름 (선택)
             path: Fork된 프로젝트의 path (선택)
         
@@ -75,8 +75,8 @@ class GitLabClient:
             생성된 프로젝트 정보
         """
         json_data = {}
-        if namespace:
-            json_data["namespace"] = namespace
+        if namespace_id:
+            json_data["namespace_id"] = namespace_id
         if name:
             json_data["name"] = name
         if path:
