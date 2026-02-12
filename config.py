@@ -120,6 +120,9 @@ class Config:
                     "Jenkins configuration incomplete. "
                     "Please set JENKINS_URL, JENKINS_USERNAME, and JENKINS_PASSWORD"
                 )
+        
+        # Backend API 설정
+        self.backend_api_base_url = os.getenv("BACKEND_API_BASE_URL", "http://localhost:8085")
     
     def get_gitlab_config(self, git_type: str) -> dict:
         """

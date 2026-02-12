@@ -1,8 +1,10 @@
 import logging
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 import sys
 import os
+import requests
 
 # 프로젝트 루트를 Python path에 추가
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -174,6 +176,18 @@ class MessageService:
             f"gitType={git_type}, "
             f"forkedProjectId={result.get('id')}"
         )
+        
+        # Backend API 호출하여 PROJECT_UPDATE 메시지 발행
+        try:
+            self._publish_project_update(result, payload)
+        except Exception as e:
+            logger.error(
+                f"Failed to publish PROJECT_UPDATE message - "
+                f"messageId={message.header.message_id}, "
+                f"error={e}",
+                exc_info=True
+            )
+            # Backend API 호출 실패는 경고로만 처리 (fork는 성공했으므로)
     
     def _handle_project_add_member(self, context: Dict[str, Any], message: Message):
         """프로젝트에 사용자 추가 처리"""
@@ -364,3 +378,143 @@ class MessageService:
             f"finalPath={final_path}, "
             f"jobUrl={result.get('url', 'N/A')}"
         )
+    
+    def _publish_project_update(self, gitlab_result: Dict[str, Any], original_payload: Dict[str, Any]):
+        """
+        Backend API를 호출하여 PROJECT_UPDATE 메시지 발행
+        
+        Args:
+            gitlab_result: GitLab API의 fork_project 결과
+            original_payload: 원본 메시지의 payload
+        """
+        backend_url = self.config.backend_api_base_url
+        api_url = f"{backend_url}/api/messages/publish"
+        
+        # GitLab result를 ProjectUpdatePayload 형식으로 변환
+        payload = self._convert_gitlab_result_to_payload(gitlab_result, original_payload)
+        
+        # 요청 본문 구성
+        request_body = {
+            "routingKey": "project.update",
+            "messageType": "PROJECT_UPDATE",
+            "payload": payload
+        }
+        
+        # HTTP 헤더 설정
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        logger.info(f"Publishing PROJECT_UPDATE message to backend API - url: {api_url}")
+        
+        # API 호출
+        response = requests.post(
+            api_url,
+            json=request_body,
+            headers=headers,
+            timeout=30
+        )
+        
+        response.raise_for_status()
+        
+        response_data = response.json()
+        if response_data.get("success"):
+            logger.info(
+                f"PROJECT_UPDATE message published successfully - "
+                f"messageId: {response_data.get('messageId')}"
+            )
+        else:
+            error_msg = response_data.get("error", "Unknown error")
+            logger.error(f"Failed to publish PROJECT_UPDATE message - error: {error_msg}")
+            raise Exception(f"Failed to publish PROJECT_UPDATE: {error_msg}")
+    
+    def _convert_gitlab_result_to_payload(
+        self,
+        gitlab_result: Dict[str, Any],
+        original_payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        GitLab API result를 ProjectUpdatePayload 형식으로 변환
+        
+        Args:
+            gitlab_result: GitLab API의 fork_project 결과
+            original_payload: 원본 메시지의 payload
+        
+        Returns:
+            ProjectUpdatePayload 형식의 딕셔너리
+        """
+        # GitLab result에서 필요한 정보 추출
+        project_id = str(gitlab_result.get("id", ""))
+        project_nm = gitlab_result.get("name", "")
+        
+        # namespace 정보 추출
+        namespace = gitlab_result.get("namespace", {})
+        group_id = str(namespace.get("id", "")) if namespace else ""
+        group_nm = namespace.get("name", "") if namespace else ""
+        
+        # parent namespace 정보 추출 (있는 경우)
+        parent_namespace = namespace.get("parent", {}) if namespace else {}
+        parent_group_id = str(parent_namespace.get("id", "")) if parent_namespace else None
+        parent_group_nm = parent_namespace.get("name", "") if parent_namespace else None
+        
+        # created_at을 LocalDateTime 형식으로 변환
+        created_at = gitlab_result.get("created_at")
+        create_dttm = None
+        if created_at:
+            try:
+                # ISO 8601 형식의 문자열을 파싱
+                create_dttm = datetime.fromisoformat(created_at.replace("Z", "+00:00")).isoformat()
+            except Exception as e:
+                logger.warning(f"Failed to parse created_at: {created_at}, error: {e}")
+        
+        # updated_at을 LocalDateTime 형식으로 변환
+        updated_at = gitlab_result.get("last_activity_at") or gitlab_result.get("updated_at")
+        update_dttm = None
+        if updated_at:
+            try:
+                update_dttm = datetime.fromisoformat(updated_at.replace("Z", "+00:00")).isoformat()
+            except Exception as e:
+                logger.warning(f"Failed to parse updated_at: {updated_at}, error: {e}")
+        
+        # 원본 payload에서 추가 정보 가져오기 (있는 경우)
+        create_user_id = original_payload.get("create_user_id")
+        update_user_id = original_payload.get("update_user_id")
+        env_grp_nm = original_payload.get("env_grp_nm")
+        
+        # payload 구성
+        payload = {
+            "project_id": project_id,
+            "project_nm": project_nm,
+            "group_id": group_id,
+            "group_nm": group_nm,
+        }
+        
+        # 선택적 필드 추가
+        if parent_group_id:
+            payload["parent_group_id"] = parent_group_id
+        if parent_group_nm:
+            payload["parent_group_nm"] = parent_group_nm
+        if create_user_id:
+            payload["create_user_id"] = create_user_id
+        if create_dttm:
+            payload["create_dttm"] = create_dttm
+        if update_user_id:
+            payload["update_user_id"] = update_user_id
+        if update_dttm:
+            payload["update_dttm"] = update_dttm
+        if env_grp_nm:
+            payload["env_grp_nm"] = env_grp_nm
+        
+        # branch_cnt, commit_cnt는 GitLab API에서 직접 제공하지 않으므로 None 또는 원본에서 가져오기
+        if "branch_cnt" in original_payload:
+            payload["branch_cnt"] = original_payload.get("branch_cnt")
+        if "commit_cnt" in original_payload:
+            payload["commit_cnt"] = original_payload.get("commit_cnt")
+        
+        # pms_info, plugins_info는 원본에서 가져오기
+        if "pms_info" in original_payload:
+            payload["pms_info"] = original_payload.get("pms_info")
+        if "plugins_info" in original_payload:
+            payload["plugins_info"] = original_payload.get("plugins_info")
+        
+        return payload

@@ -11,6 +11,37 @@ GitLab 및 Jenkins 관련 서비스를 제공하는 Python 모듈입니다. Rabb
 - 메시지 타입별 Jenkins API 호출
   - `JENKINS_PROJECT_COPY`: 다른 폴더의 프로젝트를 복사하여 새 프로젝트 생성
 
+## 처리 가능한 서비스
+
+이 모듈은 RabbitMQ를 통해 수신한 메시지를 기반으로 다음 GitLab 및 Jenkins 서비스들을 처리할 수 있습니다:
+
+### 1. GitLab 프로젝트 관리
+- **GL_PROJECT_FORK**: GitLab 프로젝트 fork하여 새 프로젝트 생성
+  - 여러 GitLab 인스턴스 지원 (GitlabAi, GitlabOnprem, Gitlab, GitlabTest 등)
+  - 원본 프로젝트 ID, 새 프로젝트 이름, namespace, path 설정 가능
+- **GL_PROJECT_ADD_MEMBER**: GitLab 프로젝트에 사용자 추가
+  - 여러 GitLab 인스턴스 지원
+  - 단일 사용자 또는 여러 사용자 동시 추가 가능
+  - 접근 레벨 설정 가능 (Guest, Reporter, Developer, Maintainer, Owner)
+
+### 2. Jenkins 프로젝트 관리
+- **JENKINS_PROJECT_COPY**: Jenkins 프로젝트 복사하여 새 프로젝트 생성
+  - 다른 폴더의 프로젝트를 복사하여 새 폴더에 생성
+  - 원본 프로젝트 경로, 대상 폴더 경로, 새 프로젝트 이름 지정 가능
+
+### 서비스 처리 방식
+
+1. **메시지 수신**: RabbitMQ Queue에서 메시지 구독 (`CONSUME_BINDING_KEY`로 필터링 가능)
+2. **메시지 타입 분기**: `messageType` 필드에 따라 적절한 핸들러 호출
+3. **GitLab/Jenkins API 호출**: 각 서비스에 맞는 API 엔드포인트 호출
+4. **다중 GitLab 인스턴스 지원**: `gitType` 필드에 따라 적절한 GitLab 인스턴스 선택
+
+### GitLab 인스턴스 지원
+
+- 여러 GitLab 인스턴스를 동시에 사용할 수 있습니다
+- 환경변수로 각 인스턴스의 URL과 Token을 설정합니다
+- 메시지 payload의 `gitType` 필드로 사용할 인스턴스를 지정합니다
+
 ## 구조
 
 ```
