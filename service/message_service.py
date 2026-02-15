@@ -395,7 +395,7 @@ class MessageService:
         
         # 요청 본문 구성
         request_body = {
-            "routingKey": "project.update",
+            "routingKey": "support.update",
             "messageType": "PROJECT_UPDATE",
             "payload": payload
         }
@@ -449,72 +449,75 @@ class MessageService:
         
         # namespace 정보 추출
         namespace = gitlab_result.get("namespace", {})
-        group_id = str(namespace.get("id", "")) if namespace else ""
-        group_nm = namespace.get("name", "") if namespace else ""
+        # group_id = str(namespace.get("id", "")) if namespace else ""
+        # group_nm = namespace.get("name", "") if namespace else ""
         
-        # parent namespace 정보 추출 (있는 경우)
+        # # parent namespace 정보 추출 (있는 경우)
         parent_namespace = namespace.get("parent", {}) if namespace else {}
         parent_group_id = str(parent_namespace.get("id", "")) if parent_namespace else None
-        parent_group_nm = parent_namespace.get("name", "") if parent_namespace else None
+        # parent_group_nm = parent_namespace.get("name", "") if parent_namespace else None
         
         # created_at을 LocalDateTime 형식으로 변환
-        created_at = gitlab_result.get("created_at")
-        create_dttm = None
-        if created_at:
-            try:
-                # ISO 8601 형식의 문자열을 파싱
-                create_dttm = datetime.fromisoformat(created_at.replace("Z", "+00:00")).isoformat()
-            except Exception as e:
-                logger.warning(f"Failed to parse created_at: {created_at}, error: {e}")
+        # created_at = gitlab_result.get("created_at")
+        # create_dttm = None
+        # if created_at:
+        #     try:
+        #         # ISO 8601 형식의 문자열을 파싱
+        #         create_dttm = datetime.fromisoformat(created_at.replace("Z", "+00:00")).isoformat()
+        #     except Exception as e:
+        #         logger.warning(f"Failed to parse created_at: {created_at}, error: {e}")
         
-        # updated_at을 LocalDateTime 형식으로 변환
-        updated_at = gitlab_result.get("last_activity_at") or gitlab_result.get("updated_at")
-        update_dttm = None
-        if updated_at:
-            try:
-                update_dttm = datetime.fromisoformat(updated_at.replace("Z", "+00:00")).isoformat()
-            except Exception as e:
-                logger.warning(f"Failed to parse updated_at: {updated_at}, error: {e}")
+        # # updated_at을 LocalDateTime 형식으로 변환
+        # updated_at = gitlab_result.get("last_activity_at") or gitlab_result.get("updated_at")
+        # update_dttm = None
+        # if updated_at:
+        #     try:
+        #         update_dttm = datetime.fromisoformat(updated_at.replace("Z", "+00:00")).isoformat()
+        #     except Exception as e:
+        #         logger.warning(f"Failed to parse updated_at: {updated_at}, error: {e}")
         
         # 원본 payload에서 추가 정보 가져오기 (있는 경우)
         create_user_id = original_payload.get("createUserId")
         update_user_id = original_payload.get("updateUserId")
         env_grp_nm = original_payload.get("gitType")
-        
-        # payload 구성
+             # payload 구성
         payload = {
-            "projectId": project_id,
-            "projectNm": project_nm,
-            "groupId": group_id,
-            "groupNm": group_nm,
+            "project_id": project_id,
+            "project_nm": project_nm,
+            "env_grp_nm": env_grp_nm
         }
-        
-        # 선택적 필드 추가
-        if parent_group_id:
+        if "groupId" in original_payload:
+            payload["group_id"] = original_payload.get("groupId")
+        if "groupNm" in original_payload:
+            payload["group_nm"] = original_payload.get("groupNm")
+
+   
+        if "parentGroupId" in original_payload:
+            payload["parent_group_id"] = original_payload.get("parentGroupId")
+        else:
             payload["parent_group_id"] = parent_group_id
-        if parent_group_nm:
-            payload["parent_group_nm"] = parent_group_nm
-        if create_user_id:
-            payload["create_user_id"] = create_user_id
-        if create_dttm:
-            payload["create_dttm"] = create_dttm
-        if update_user_id:
-            payload["update_user_id"] = update_user_id
-        if update_dttm:
-            payload["update_dttm"] = update_dttm
-        if env_grp_nm:
-            payload["env_grp_nm"] = env_grp_nm
+        if "parentGroupNm" in original_payload:
+            payload["parent_group_nm"] = original_payload.get("parentGroupNm")
+        if "createUserId" in original_payload:
+            payload["create_user_id"] = original_payload.get("createUserId")
+        if "createDttm" in original_payload:
+            payload["create_dttm"] = original_payload.get("createDttm")
+        if "updateUserId" in original_payload:
+            payload["update_user_id"] = original_payload.get("updateUserId")
+        if "updateDttm" in original_payload:
+            payload["update_dttm"] = original_payload.get("updateDttm")
+
         
         # branch_cnt, commit_cnt는 GitLab API에서 직접 제공하지 않으므로 None 또는 원본에서 가져오기
-        if "branch_cnt" in original_payload:
-            payload["branch_cnt"] = original_payload.get("branch_cnt")
-        if "commit_cnt" in original_payload:
-            payload["commit_cnt"] = original_payload.get("commit_cnt")
+        if "branchCnt" in original_payload:
+            payload["branch_cnt"] = original_payload.get("branchCnt")
+        if "commitCnt" in original_payload:
+            payload["commit_cnt"] = original_payload.get("commitCnt")
         
         # pms_info, plugins_info는 원본에서 가져오기
-        if "pms_info" in original_payload:
-            payload["pms_info"] = original_payload.get("pms_info")
-        if "plugins_info" in original_payload:
-            payload["plugins_info"] = original_payload.get("plugins_info")
+        if "pmsInfo" in original_payload:
+            payload["pms_info"] = original_payload.get("pmsInfo")
+        if "pluginsInfo" in original_payload:
+            payload["plugins_info"] = original_payload.get("pluginsInfo")
         
         return payload
