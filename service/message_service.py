@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 import sys
@@ -224,7 +224,7 @@ class MessageService:
         
         # 필수 필드 확인
         project_id = payload.get("projectId")
-        user_id = payload.get("userId")
+        user_id = payload.get("userIds")
         
         if not project_id or not user_id:
             logger.warning(
@@ -241,6 +241,7 @@ class MessageService:
         if isinstance(user_id, list):
             # 리스트인 경우 각 user_id에 대해 처리
             results = []
+            success_user_ids = []
             for uid in user_id:
                 try:
                     result = gitlab_client.add_project_member(
@@ -249,6 +250,7 @@ class MessageService:
                         access_level=int(access_level)
                     )
                     results.append(result)
+                    success_user_ids.append(str(uid))
                     logger.info(
                         f"Successfully added member - "
                         f"messageId={message.header.message_id}, "
@@ -274,6 +276,23 @@ class MessageService:
                 f"totalUsers={len(user_id)}, "
                 f"successCount={len(results)}"
             )
+            
+            # Backend API 호출하여 PROJECT_USER_UPDATE 메시지 발행
+            if success_user_ids:
+                try:
+                    self._publish_project_user_update(
+                        project_id=str(project_id),
+                        git_type=git_type,
+                        user_ids=success_user_ids
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to publish PROJECT_USER_UPDATE message - "
+                        f"messageId={message.header.message_id}, "
+                        f"error={e}",
+                        exc_info=True
+                    )
+                    # Backend API 호출 실패는 경고로만 처리 (멤버 추가는 성공했으므로)
         else:
             # 단일 값인 경우 기존 로직
             result = gitlab_client.add_project_member(
@@ -289,6 +308,22 @@ class MessageService:
                 f"projectId={project_id}, userId={user_id}, "
                 f"memberId={result.get('id')}"
             )
+            
+            # Backend API 호출하여 PROJECT_USER_UPDATE 메시지 발행
+            try:
+                self._publish_project_user_update(
+                    project_id=str(project_id),
+                    git_type=git_type,
+                    user_ids=[str(user_id)]
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to publish PROJECT_USER_UPDATE message - "
+                    f"messageId={message.header.message_id}, "
+                    f"error={e}",
+                    exc_info=True
+                )
+                # Backend API 호출 실패는 경고로만 처리 (멤버 추가는 성공했으므로)
     
     def _get_jenkins_client(self) -> Optional[JenkinsClient]:
         """
@@ -427,6 +462,68 @@ class MessageService:
             error_msg = response_data.get("error", "Unknown error")
             logger.error(f"Failed to publish PROJECT_UPDATE message - error: {error_msg}")
             raise Exception(f"Failed to publish PROJECT_UPDATE: {error_msg}")
+    
+    def _publish_project_user_update(
+        self,
+        project_id: str,
+        git_type: str,
+        user_ids: List[str]
+    ):
+        """
+        Backend API를 호출하여 PROJECT_USER_UPDATE 메시지 발행
+        
+        Args:
+            project_id: 프로젝트 ID
+            git_type: GitLab 타입
+            user_ids: 사용자 ID 리스트
+        """
+        backend_url = self.config.backend_api_base_url
+        api_url = f"{backend_url}/api/messages/publish"
+        
+        # ProjectUserUpdatePayload 형식으로 변환
+        payload = {
+            "projectId": project_id,
+            "gitType": git_type,
+            "userIds": user_ids
+        }
+        
+        # 요청 본문 구성
+        request_body = {
+            "routingKey": "support.update",
+            "messageType": "PROJECT_USER_UPDATE",
+            "payload": payload
+        }
+        
+        # HTTP 헤더 설정
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        logger.info(
+            f"Publishing PROJECT_USER_UPDATE message to backend API - "
+            f"url: {api_url}, projectId: {project_id}, userIds: {user_ids}"
+        )
+        
+        # API 호출
+        response = requests.post(
+            api_url,
+            json=request_body,
+            headers=headers,
+            timeout=30
+        )
+        
+        response.raise_for_status()
+        
+        response_data = response.json()
+        if response_data.get("success"):
+            logger.info(
+                f"PROJECT_USER_UPDATE message published successfully - "
+                f"messageId: {response_data.get('messageId')}"
+            )
+        else:
+            error_msg = response_data.get("error", "Unknown error")
+            logger.error(f"Failed to publish PROJECT_USER_UPDATE message - error: {error_msg}")
+            raise Exception(f"Failed to publish PROJECT_USER_UPDATE: {error_msg}")
     
     def _convert_gitlab_result_to_payload(
         self,
