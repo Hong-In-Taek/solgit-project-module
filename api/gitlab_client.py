@@ -106,36 +106,53 @@ class GitLabClient:
     
     def add_project_member(
         self,
-        project_id: int,
-        user_id: int,
+        group_id: int,
+        username: str,
         access_level: int = 30
     ) -> Dict[str, Any]:
         """
-        프로젝트에 사용자 추가
+        그룹에 사용자 추가
         
         Args:
-            project_id: 프로젝트 ID
-            user_id: 추가할 사용자 ID
+            group_id: 그룹 ID
+            username: 추가할 사용자 username
             access_level: 접근 레벨 (10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner)
         
         Returns:
             추가된 멤버 정보
         """
+        # username으로 user_id 조회
+        logger.info(f"Looking up user_id for username: {username}")
+        users = self._request(
+            "GET",
+            "/users",
+            params={"username": username}
+        )
+        
+        if not users or len(users) == 0:
+            raise ValueError(f"User with username '{username}' not found")
+        
+        user_id = users[0].get("id")
+        if not user_id:
+            raise ValueError(f"User ID not found for username '{username}'")
+        
+        logger.info(f"Found user_id {user_id} for username {username}")
+        
         json_data = {
             "user_id": user_id,
             "access_level": access_level
         }
         
         logger.info(
-            f"Adding user {user_id} to project {project_id} "
+            f"Adding user {username} (id: {user_id}) to group {group_id} "
             f"with access level {access_level}"
         )
         result = self._request(
             "POST",
-            f"/projects/{project_id}/members",
+            f"/groups/{group_id}/members",
             json_data=json_data
         )
-        logger.info(f"User added to project successfully: {result.get('id')}")
+        logger.info(f"User added to group successfully: {result.get('id')}")
         return result
     
     def get_project(self, project_id: int) -> Dict[str, Any]:

@@ -237,25 +237,25 @@ class MessageService:
         # 선택적 필드 (기본값: Developer = 30)
         access_level = payload.get("access_level", 30)
         
-        # user_id가 리스트인지 확인
+        # user_id가 리스트인지 확인 (userIds는 username을 담고 있음)
         if isinstance(user_id, list):
-            # 리스트인 경우 각 user_id에 대해 처리
+            # 리스트인 경우 각 username에 대해 처리
             results = []
             success_user_ids = []
-            for uid in user_id:
+            for username in user_id:
                 try:
                     result = gitlab_client.add_project_member(
-                        project_id=int(project_id),
-                        user_id=int(uid),
+                        group_id=int(project_id),
+                        username=str(username),
                         access_level=int(access_level)
                     )
                     results.append(result)
-                    success_user_ids.append(str(uid))
+                    success_user_ids.append(str(username))
                     logger.info(
                         f"Successfully added member - "
                         f"messageId={message.header.message_id}, "
                         f"gitType={git_type}, "
-                        f"projectId={project_id}, userId={uid}, "
+                        f"groupId={project_id}, username={username}, "
                         f"memberId={result.get('id')}"
                     )
                 except Exception as e:
@@ -263,7 +263,7 @@ class MessageService:
                         f"Failed to add member - "
                         f"messageId={message.header.message_id}, "
                         f"gitType={git_type}, "
-                        f"projectId={project_id}, userId={uid}, "
+                        f"groupId={project_id}, username={username}, "
                         f"error={e}",
                         exc_info=True
                     )
@@ -278,26 +278,26 @@ class MessageService:
             )
             
             # Backend API 호출하여 PROJECT_USER_UPDATE 메시지 발행
-            if success_user_ids:
-                try:
-                    self._publish_project_user_update(
-                        project_id=str(project_id),
-                        git_type=git_type,
-                        user_ids=success_user_ids
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to publish PROJECT_USER_UPDATE message - "
-                        f"messageId={message.header.message_id}, "
-                        f"error={e}",
-                        exc_info=True
-                    )
+            # if success_user_ids:
+            #     try:
+            #         self._publish_project_user_update(
+            #             project_id=str(project_id),
+            #             git_type=git_type,
+            #             user_ids=success_user_ids
+            #         )
+            #     except Exception as e:
+            #         logger.error(
+            #             f"Failed to publish PROJECT_USER_UPDATE message - "
+            #             f"messageId={message.header.message_id}, "
+            #             f"error={e}",
+            #             exc_info=True
+            #         )
                     # Backend API 호출 실패는 경고로만 처리 (멤버 추가는 성공했으므로)
         else:
-            # 단일 값인 경우 기존 로직
+            # 단일 값인 경우 (userIds는 username을 담고 있음)
             result = gitlab_client.add_project_member(
-                project_id=int(project_id),
-                user_id=int(user_id),
+                group_id=int(project_id),
+                username=str(user_id),
                 access_level=int(access_level)
             )
             
@@ -305,24 +305,24 @@ class MessageService:
                 f"Successfully processed GL_PROJECT_ADD_MEMBER - "
                 f"messageId={message.header.message_id}, "
                 f"gitType={git_type}, "
-                f"projectId={project_id}, userId={user_id}, "
+                f"groupId={project_id}, username={user_id}, "
                 f"memberId={result.get('id')}"
             )
             
             # Backend API 호출하여 PROJECT_USER_UPDATE 메시지 발행
-            try:
-                self._publish_project_user_update(
-                    project_id=str(project_id),
-                    git_type=git_type,
-                    user_ids=[str(user_id)]
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to publish PROJECT_USER_UPDATE message - "
-                    f"messageId={message.header.message_id}, "
-                    f"error={e}",
-                    exc_info=True
-                )
+            # try:
+            #     self._publish_project_user_update(
+            #         project_id=str(project_id),
+            #         git_type=git_type,
+            #         user_ids=[str(user_id)]
+            #     )
+            # except Exception as e:
+            #     logger.error(
+            #         f"Failed to publish PROJECT_USER_UPDATE message - "
+            #         f"messageId={message.header.message_id}, "
+            #         f"error={e}",
+            #         exc_info=True
+            #     )
                 # Backend API 호출 실패는 경고로만 처리 (멤버 추가는 성공했으므로)
     
     def _get_jenkins_client(self) -> Optional[JenkinsClient]:
